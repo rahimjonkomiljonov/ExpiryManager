@@ -2,6 +2,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { GroceryItem } from '@/services/storageService';
+import { loadNotificationTime } from '@/services/notificationTimeService';
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -45,14 +46,16 @@ export async function getNotificationPermissionStatus(): Promise<NotificationPer
   return status as NotificationPermissionStatus;
 }
 
-/** Build the notification trigger date for N days before expiry at 9:00 AM */
-function getTriggerDate(expiryDateStr: string, daysBefore: number): Date | null {
+/** Build the notification trigger date for N days before expiry at the user's configured time */
+async function getTriggerDate(expiryDateStr: string, daysBefore: number): Promise<Date | null> {
   const expiry = new Date(expiryDateStr);
   expiry.setHours(0, 0, 0, 0);
 
+  const time = await loadNotificationTime();
+
   const trigger = new Date(expiry);
   trigger.setDate(trigger.getDate() - daysBefore);
-  trigger.setHours(9, 0, 0, 0);
+  trigger.setHours(time.hour, time.minute, 0, 0);
 
   // Only schedule if the trigger time is in the future
   if (trigger.getTime() <= Date.now()) return null;
@@ -67,7 +70,7 @@ export async function scheduleExpiryNotifications(item: GroceryItem): Promise<st
   const notificationIds: string[] = [];
 
   for (const daysBefore of REMINDER_DAYS) {
-    const triggerDate = getTriggerDate(item.expiryDate, daysBefore);
+    const triggerDate = await getTriggerDate(item.expiryDate, daysBefore);
     if (!triggerDate) continue;
 
     const label =
