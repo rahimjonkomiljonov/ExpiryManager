@@ -17,24 +17,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout source code ────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ── 2. Set up Node.js ──────────────────────────────────────────────────
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'pnpm'
-
-      # ── 3. Install pnpm ───────────────────────────────────────────────────
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      # ── 4. Install dependencies ────────────────────────────────────────────
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+    - name: Checkout repository
+      uses: actions/checkout@v4
+  
+    - name: Install pnpm
+      run: npm install -g pnpm
+  
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+  
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
 
       # ── 5. Install Expo CLI globally ───────────────────────────────────────
       - name: Install Expo CLI
