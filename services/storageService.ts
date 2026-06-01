@@ -7,10 +7,11 @@ export interface GroceryItem {
   name: string;
   category: string;
   quantity: string;
-  expiryDate: string; // ISO date string
-  addedDate: string;  // ISO date string
+  expiryDate: string;         // ISO date string
+  addedDate: string;          // ISO date string
   notes: string;
   barcode?: string;
+  notificationIds?: string[]; // expo-notifications scheduled IDs
 }
 
 export type ExpiryStatus = 'expired' | 'critical' | 'soon' | 'fresh';

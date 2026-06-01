@@ -1,10 +1,15 @@
 // Powered by OnSpace.AI
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAlert } from '@/template';
 import { useItems } from '@/hooks/useItems';
+import {
+  getNotificationPermissionStatus,
+  initNotifications,
+  NotificationPermissionStatus,
+} from '@/services/notificationService';
 import { Colors, Fonts, Spacing, Radius, Shadow } from '@/constants/theme';
 
 interface SettingRowProps {
@@ -13,9 +18,10 @@ interface SettingRowProps {
   subtitle?: string;
   onPress: () => void;
   destructive?: boolean;
+  trailing?: React.ReactNode;
 }
 
-function SettingRow({ icon, title, subtitle, onPress, destructive }: SettingRowProps) {
+function SettingRow({ icon, title, subtitle, onPress, destructive, trailing }: SettingRowProps) {
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.75 }]}
@@ -28,14 +34,21 @@ function SettingRow({ icon, title, subtitle, onPress, destructive }: SettingRowP
         <Text style={[styles.rowTitle, destructive && styles.rowTitleDestructive]}>{title}</Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
-      <MaterialIcons name="chevron-right" size={20} color={Colors.textTertiary} />
+      {trailing ? trailing : (
+        <MaterialIcons name="chevron-right" size={20} color={Colors.textTertiary} />
+      )}
     </Pressable>
   );
 }
 
 export default function SettingsScreen() {
   const { showAlert } = useAlert();
-  const { items, deleteItem } = useItems();
+  const { items, deleteAllItems } = useItems();
+  const [permStatus, setPermStatus] = useState<NotificationPermissionStatus>('undetermined');
+
+  useEffect(() => {
+    getNotificationPermissionStatus().then(setPermStatus);
+  }, []);
 
   const handleClearAll = () => {
     showAlert(
@@ -47,10 +60,8 @@ export default function SettingsScreen() {
           text: 'Clear All',
           style: 'destructive',
           onPress: async () => {
-            for (const item of items) {
-              await deleteItem(item.id);
-            }
-            showAlert('Cleared', 'All items have been removed.');
+            await deleteAllItems();
+            showAlert('Cleared', 'All items and their notifications have been removed.');
           },
         },
       ]
@@ -58,16 +69,74 @@ export default function SettingsScreen() {
   };
 
   const handleAbout = () => {
-    showAlert('Expiry Date Manager', 'Version 1.0\n\nTrack your groceries and reduce food waste by knowing exactly when items expire.');
+    showAlert(
+      'Expiry Date Manager',
+      'Version 1.0\n\nTrack your groceries and reduce food waste by knowing exactly when items expire.'
+    );
   };
 
-  const handleNotifications = () => {
-    showAlert('Notifications', 'Push notification reminders will be available in a future update. Stay tuned!');
+  const handleNotifications = async () => {
+    if (permStatus === 'granted') {
+      showAlert(
+        'Notifications Enabled',
+        'You will receive reminders at 9:00 AM on the following days before each item expires:\n\n• 7 days before\n• 3 days before\n• 1 day before (tomorrow)\n\nNotifications are scheduled automatically when you add an item.'
+      );
+    } else {
+      showAlert(
+        'Enable Notifications',
+        'Allow notifications to receive expiry reminders for your grocery items.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Enable',
+            onPress: async () => {
+              const status = await initNotifications();
+              setPermStatus(status);
+              if (status === 'granted') {
+                showAlert('Notifications Enabled', 'You will now receive expiry reminders.');
+              } else {
+                showAlert(
+                  'Permission Denied',
+                  'Please enable notifications in your device Settings to receive expiry reminders.'
+                );
+              }
+            },
+          },
+        ]
+      );
+    }
   };
 
   const handleExport = () => {
     showAlert('Export Data', 'Data export functionality will be available in a future update.');
   };
+
+  const notifStatusBadge = (
+    <View
+      style={[
+        styles.statusPill,
+        permStatus === 'granted' ? styles.statusPillOn : styles.statusPillOff,
+      ]}
+    >
+      <View
+        style={[
+          styles.statusDot,
+          permStatus === 'granted' ? styles.statusDotOn : styles.statusDotOff,
+        ]}
+      />
+      <Text
+        style={[
+          styles.statusPillText,
+          permStatus === 'granted' ? styles.statusPillTextOn : styles.statusPillTextOff,
+        ]}
+      >
+        {permStatus === 'granted' ? 'On' : 'Off'}
+      </Text>
+    </View>
+  );
+
+  // Count items that have active notifications scheduled
+  const itemsWithNotifs = items.filter(i => (i.notificationIds?.length ?? 0) > 0).length;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -85,13 +154,14 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <MaterialIcons name="eco" size={28} color={Colors.fresh} />
-            <Text style={styles.statLabel}>Food Tracked</Text>
+            <MaterialIcons name="notifications-active" size={28} color={Colors.primary} />
+            <Text style={styles.statValue}>{itemsWithNotifs}</Text>
+            <Text style={styles.statLabel}>Notified</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Wasted</Text>
+            <MaterialIcons name="eco" size={28} color={Colors.fresh} />
+            <Text style={styles.statLabel}>Food Tracked</Text>
           </View>
         </View>
 
@@ -101,8 +171,13 @@ export default function SettingsScreen() {
           <SettingRow
             icon="notifications-none"
             title="Expiry Notifications"
-            subtitle="Get reminders before items expire"
+            subtitle={
+              permStatus === 'granted'
+                ? `Reminders at 7, 3 & 1 day${itemsWithNotifs > 0 ? ` · ${itemsWithNotifs} item${itemsWithNotifs !== 1 ? 's' : ''} scheduled` : ''}`
+                : 'Tap to enable reminders before items expire'
+            }
             onPress={handleNotifications}
+            trailing={notifStatusBadge}
           />
           <View style={styles.separator} />
           <SettingRow
@@ -119,7 +194,7 @@ export default function SettingsScreen() {
           <SettingRow
             icon="delete-sweep"
             title="Clear All Items"
-            subtitle={`Remove all ${items.length} tracked items`}
+            subtitle={`Remove all ${items.length} tracked items & notifications`}
             onPress={handleClearAll}
             destructive
           />
@@ -140,7 +215,7 @@ export default function SettingsScreen() {
         <View style={styles.tip}>
           <MaterialIcons name="lightbulb-outline" size={18} color={Colors.soon} />
           <Text style={styles.tipText}>
-            Tip: Items expiring within 3 days are marked as critical. Check your pantry regularly to minimize food waste!
+            Tip: Notifications are scheduled automatically when you add an item — reminders fire at 9:00 AM, 7, 3, and 1 day before expiry.
           </Text>
         </View>
 
@@ -260,6 +335,36 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
     marginLeft: Spacing.md + 36 + Spacing.md,
   },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  statusPillOn: {
+    backgroundColor: Colors.freshBg,
+    borderColor: Colors.freshBorder,
+  },
+  statusPillOff: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderColor: Colors.border,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusDotOn: { backgroundColor: Colors.fresh },
+  statusDotOff: { backgroundColor: Colors.textTertiary },
+  statusPillText: {
+    fontSize: 12,
+    fontWeight: Fonts.semibold,
+  },
+  statusPillTextOn: { color: Colors.fresh },
+  statusPillTextOff: { color: Colors.textTertiary },
   tip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
