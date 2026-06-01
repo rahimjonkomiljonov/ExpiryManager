@@ -1,5 +1,5 @@
 // Powered by OnSpace.AI
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,19 +10,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAlert } from '@/template';
 import { useItems } from '@/hooks/useItems';
 import { CATEGORIES } from '@/constants/config';
 import { Colors, Fonts, Spacing, Radius, Shadow } from '@/constants/theme';
-const BarcodeScanner = React.lazy(() =>
-  import('@/components/feature/BarcodeScanner').then(m => ({ default: m.BarcodeScanner }))
-);
-import { FoodProduct } from '@/services/foodApiService';
+import { ScannerEvents } from '@/services/scannerEvents';
 
 type DateField = { day: string; month: string; year: string };
 
@@ -48,31 +44,34 @@ export default function AddItemScreen() {
   const [notes, setNotes] = useState('');
   const [dateFields, setDateFields] = useState<DateField>({ day: '', month: '', year: '' });
   const [isSaving, setIsSaving] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState('');
 
-  const handleProductFound = useCallback(
-    (product: FoodProduct, barcode: string) => {
-      setShowScanner(false);
-      setScannedBarcode(barcode);
+  // Listen for scan results when this screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      ScannerEvents.onResult((result) => {
+        setScannedBarcode(result.barcode);
+        if (result.name) setName(result.name);
+        if (result.quantity) setQuantity(result.quantity);
+        if (result.category) setCategory(result.category);
 
-      if (product.name) setName(product.name);
-      if (product.quantity) setQuantity(product.quantity);
-      if (product.category) setCategory(product.category);
+        if (result.found && result.name) {
+          showAlert(
+            'Product Found',
+            `${result.name}${result.brand ? ` by ${result.brand}` : ''}\n\nFill in the expiry date to continue.`
+          );
+        } else {
+          showAlert(
+            'Barcode Scanned',
+            `Barcode: ${result.barcode}\n\nProduct not found in database. Please enter details manually.`
+          );
+        }
+      });
 
-      if (product.found && product.name) {
-        showAlert(
-          'Product Found',
-          `${product.name}${product.brand ? ` by ${product.brand}` : ''}\n\nExpiry date has been pre-filled — please verify it.`
-        );
-      } else {
-        showAlert(
-          'Barcode Scanned',
-          `Barcode: ${barcode}\n\nProduct not found in database. Please enter details manually.`
-        );
-      }
-    },
-    [showAlert]
+      return () => {
+        ScannerEvents.offResult();
+      };
+    }, [showAlert])
   );
 
   const handleSave = useCallback(async () => {
@@ -96,7 +95,6 @@ export default function AddItemScreen() {
     });
     setIsSaving(false);
 
-    // Reset form
     setName('');
     setQuantity('');
     setCategory('other');
@@ -112,16 +110,6 @@ export default function AddItemScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Full-screen scanner modal */}
-      <Modal visible={showScanner} animationType="slide" statusBarTranslucent>
-        <React.Suspense fallback={<View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#2D7D46" /></View>}>
-          <BarcodeScanner
-            onProductFound={handleProductFound}
-            onClose={() => setShowScanner(false)}
-          />
-        </React.Suspense>
-      </Modal>
-
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Add Item</Text>
         <Text style={styles.headerSubtitle}>Track a new grocery item</Text>
@@ -136,10 +124,10 @@ export default function AddItemScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Scan Button */}
+          {/* Scan Button — navigates to full-screen scanner route */}
           <Pressable
             style={({ pressed }) => [styles.scanButton, pressed && { opacity: 0.85 }]}
-            onPress={() => setShowScanner(true)}
+            onPress={() => router.push('/scanner')}
           >
             <MaterialIcons name="qr-code-scanner" size={22} color={Colors.primary} />
             <Text style={styles.scanText}>Scan Barcode</Text>
@@ -229,10 +217,7 @@ export default function AddItemScreen() {
                 {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
                   <Pressable
                     key={cat.id}
-                    style={[
-                      styles.catOption,
-                      category === cat.id && styles.catOptionActive,
-                    ]}
+                    style={[styles.catOption, category === cat.id && styles.catOptionActive]}
                     onPress={() => setCategory(cat.id)}
                   >
                     <Text style={styles.catOptionEmoji}>{cat.emoji}</Text>
@@ -293,184 +278,71 @@ export default function AddItemScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
     backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: Fonts.bold,
-    color: Colors.textPrimary,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: Colors.textTertiary,
-    marginTop: 2,
-  },
-  scroll: {
-    flex: 1,
-  },
+  headerTitle: { fontSize: 22, fontWeight: Fonts.bold, color: Colors.textPrimary },
+  headerSubtitle: { fontSize: 13, color: Colors.textTertiary, marginTop: 2 },
+  scroll: { flex: 1 },
   scanButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    margin: Spacing.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.primaryLight,
-    borderRadius: Radius.md,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderStyle: 'dashed',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, margin: Spacing.md, padding: Spacing.md,
+    backgroundColor: Colors.primaryLight, borderRadius: Radius.md,
+    borderWidth: 1.5, borderColor: Colors.primary, borderStyle: 'dashed',
     position: 'relative',
   },
-  scanText: {
-    fontSize: 15,
-    fontWeight: Fonts.semibold,
-    color: Colors.primary,
-  },
+  scanText: { fontSize: 15, fontWeight: Fonts.semibold, color: Colors.primary },
   scannedTag: {
-    position: 'absolute',
-    top: 6,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: Colors.freshBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: Colors.freshBorder,
+    position: 'absolute', top: 6, right: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: Colors.freshBg, paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.freshBorder,
   },
-  scannedTagText: {
-    fontSize: 10,
-    fontWeight: Fonts.bold,
-    color: Colors.fresh,
-    letterSpacing: 0.3,
-  },
+  scannedTagText: { fontSize: 10, fontWeight: Fonts.bold, color: Colors.fresh, letterSpacing: 0.3 },
   barcodeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: Spacing.md,
-    marginTop: -Spacing.sm,
-    marginBottom: Spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: Spacing.md, marginTop: -Spacing.sm, marginBottom: Spacing.sm,
   },
   barcodeInfoText: {
-    fontSize: 12,
-    color: Colors.textTertiary,
+    fontSize: 12, color: Colors.textTertiary,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, gap: Spacing.sm, marginBottom: Spacing.sm,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    fontSize: 12,
-    color: Colors.textTertiary,
-    fontWeight: Fonts.medium,
-  },
-  form: {
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.md,
-  },
-  field: {
-    gap: Spacing.sm,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: Fonts.semibold,
-    color: Colors.textSecondary,
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { fontSize: 12, color: Colors.textTertiary, fontWeight: Fonts.medium },
+  form: { paddingHorizontal: Spacing.md, gap: Spacing.md },
+  field: { gap: Spacing.sm },
+  fieldLabel: { fontSize: 14, fontWeight: Fonts.semibold, color: Colors.textSecondary },
   input: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 4,
-    fontSize: 15,
-    color: Colors.textPrimary,
-    ...Shadow.sm,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 4, fontSize: 15, color: Colors.textPrimary, ...Shadow.sm,
   },
-  dateRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  dateInput: {
-    flex: 1,
-    textAlign: 'center',
-  },
-  dateInputYear: {
-    flex: 1.5,
-    textAlign: 'center',
-  },
-  categoriesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
+  dateRow: { flexDirection: 'row', gap: Spacing.sm },
+  dateInput: { flex: 1, textAlign: 'center' },
+  dateInputYear: { flex: 1.5, textAlign: 'center' },
+  categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   catOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: Spacing.sm + 2,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: Spacing.sm + 2, paddingVertical: Spacing.xs + 2,
+    borderRadius: Radius.full, borderWidth: 1,
+    borderColor: Colors.border, backgroundColor: Colors.surface,
   },
-  catOptionActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primary,
-  },
-  catOptionEmoji: {
-    fontSize: 14,
-  },
-  catOptionLabel: {
-    fontSize: 13,
-    fontWeight: Fonts.medium,
-    color: Colors.textSecondary,
-  },
-  catOptionLabelActive: {
-    color: Colors.primaryDark,
-    fontWeight: Fonts.semibold,
-  },
-  notesInput: {
-    height: 80,
-    paddingTop: Spacing.sm + 4,
-  },
+  catOptionActive: { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
+  catOptionEmoji: { fontSize: 14 },
+  catOptionLabel: { fontSize: 13, fontWeight: Fonts.medium, color: Colors.textSecondary },
+  catOptionLabelActive: { color: Colors.primaryDark, fontWeight: Fonts.semibold },
+  notesInput: { height: 80, paddingTop: Spacing.sm + 4 },
   saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    padding: Spacing.md,
-    borderRadius: Radius.md,
-    marginTop: Spacing.sm,
-    ...Shadow.md,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, backgroundColor: Colors.primary, padding: Spacing.md,
+    borderRadius: Radius.md, marginTop: Spacing.sm, ...Shadow.md,
   },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: Fonts.semibold,
-    color: Colors.textOnPrimary,
-  },
+  saveButtonText: { fontSize: 16, fontWeight: Fonts.semibold, color: Colors.textOnPrimary },
 });

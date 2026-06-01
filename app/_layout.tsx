@@ -28,6 +28,14 @@ export default function RootLayout() {
                 presentation: 'card',
               }}
             />
+            <Stack.Screen
+              name="scanner"
+              options={{
+                headerShown: false,
+                presentation: 'fullScreenModal',
+                animation: 'slide_from_bottom',
+              }}
+            />
           </Stack>
         </ItemsProvider>
       </SafeAreaProvider>
