@@ -23,7 +23,7 @@ jobs:
 
       - name: 🛠️ Set up Gradle
         uses: gradle/gradle-build-action@v3
-
+      
       - name: 🔓 Give permission to the build tool
         run: chmod +x gradlew
 
