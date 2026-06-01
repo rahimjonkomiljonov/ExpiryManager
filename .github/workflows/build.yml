@@ -1,6 +1,5 @@
-name: Build Android APK
+name: Build Android APK (Cloud Only)
 
-# This tells GitHub to run the build automatically whenever you push new code to the 'main' branch.
 on:
   push:
     branches:
@@ -19,11 +18,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17' 
+          java-version: '17'
 
-      - name: 🛠️ Set up Gradle
-        uses: gradle/gradle-build-action@v3
-      
+      - name: 🛠️ Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 🪄 Generate Wrapper Automatically in Cloud
+        run: gradle wrapper
+
       - name: 🔓 Give permission to the build tool
         run: chmod +x gradlew
 
