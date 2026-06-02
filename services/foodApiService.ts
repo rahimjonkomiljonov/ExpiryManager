@@ -1,4 +1,4 @@
-// Powered by OnSpace.AI
+
 export interface FoodProduct {
   name: string;
   category: string;
