@@ -1,4 +1,4 @@
-// Powered by OnSpace.AI
+
 import React, { memo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
